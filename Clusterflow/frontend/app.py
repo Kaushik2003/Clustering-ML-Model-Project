@@ -263,7 +263,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API Configuration
-API_URL = "http://localhost:8000"
+# Use environment variable for API URL, fallback to localhost for local development
+import os
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 def check_api_health() -> bool:
     """Check if the API is running"""
