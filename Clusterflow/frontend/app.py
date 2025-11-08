@@ -262,50 +262,110 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# API Configuration
-API_URL = "http://localhost:8000"
+# Load ML models directly
+import joblib
+import numpy as np
+import os
+
+@st.cache_resource
+def load_models():
+    """Load ML models"""
+    try:
+        model_dir = "../model"
+        model = joblib.load(os.path.join(model_dir, "kprototypes_model.joblib"))
+        scaler = joblib.load(os.path.join(model_dir, "standard_scaler.joblib"))
+        encoder = joblib.load(os.path.join(model_dir, "ordinal_encoder.joblib"))
+        model_info = joblib.load(os.path.join(model_dir, "model_info.joblib"))
+        return model, scaler, encoder, model_info
+    except Exception as e:
+        st.error(f"Error loading models: {e}")
+        return None, None, None, None
+
+# Load models
+model, scaler, encoder, model_info = load_models()
 
 def check_api_health() -> bool:
-    """Check if the API is running"""
-    try:
-        response = requests.get(f"{API_URL}/health", timeout=2)
-        return response.status_code == 200
-    except:
-        return False
+    """Check if models are loaded"""
+    return model is not None
 
 def get_available_genres() -> Dict[str, list]:
-    """Get available genres from API"""
-    try:
-        response = requests.get(f"{API_URL}/available-genres", timeout=5)
-        if response.status_code == 200:
-            return response.json()
-    except:
-        pass
-    
-    # Fallback genres
+    """Get available genres"""
     return {
         "game_genres": ["FPS", "Sports", "Racing", "Strategy", "Puzzle", "Casual", "RPG", "MOBA"],
         "music_genres": ["Bollywood", "Classical", "Indie", "Lofi", "Pop", "Hip-Hop", "Rock", "EDM", "Devotional", "Lo-fi"]
     }
 
 def make_prediction(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Send prediction request to API"""
+    """Make prediction using loaded models"""
+    if model is None:
+        return {"success": False, "error": "Models not loaded"}
+    
     try:
-        response = requests.post(
-            f"{API_URL}/predict",
-            json=data,
-            timeout=10
-        )
+        # Prepare categorical features
+        categorical_features = [
+            data["game_genre_top_1"],
+            data["game_genre_top_2"],
+            data["game_genre_top_3"],
+            data["music_genre_top_1"],
+            data["music_genre_top_2"],
+            data["music_genre_top_3"]
+        ]
         
-        if response.status_code == 200:
-            return {"success": True, "data": response.json()}
+        # Encode categorical features
+        categorical_encoded = encoder.transform([categorical_features])
+        
+        # Prepare numerical feature
+        numerical_feature = np.array([[data["listening_hours"]]])
+        numerical_scaled = scaler.transform(numerical_feature)
+        
+        # Combine features
+        features = np.concatenate([categorical_encoded, numerical_scaled], axis=1)
+        
+        # Predict cluster
+        cluster = model.predict(features, categorical=[0, 1, 2, 3, 4, 5])[0]
+        
+        # Get cluster information
+        cluster_profiles = model_info.get("cluster_profiles", {})
+        cluster_info = cluster_profiles.get(int(cluster), {})
+        
+        # Extract cluster details
+        cluster_name = f"Cluster {cluster}"
+        description = "Student group based on gaming and music preferences"
+        
+        # Get top games and music
+        top_games = []
+        top_music = []
+        
+        if cluster_info:
+            for i in range(3):
+                game_key = f"game_genre_top_{i+1}"
+                if game_key in cluster_info:
+                    top_games.append(cluster_info[game_key])
+            
+            for i in range(3):
+                music_key = f"music_genre_top_{i+1}"
+                if music_key in cluster_info:
+                    top_music.append(cluster_info[music_key])
+            
+            avg_hours = cluster_info.get("listening_hours", data["listening_hours"])
         else:
-            error_detail = response.json().get("detail", "Unknown error")
-            return {"success": False, "error": error_detail}
-    except requests.exceptions.ConnectionError:
-        return {"success": False, "error": "Cannot connect to API. Please ensure the backend is running."}
-    except requests.exceptions.Timeout:
-        return {"success": False, "error": "Request timed out. Please try again."}
+            top_games = [data["game_genre_top_1"], data["game_genre_top_2"], data["game_genre_top_3"]]
+            top_music = [data["music_genre_top_1"], data["music_genre_top_2"], data["music_genre_top_3"]]
+            avg_hours = data["listening_hours"]
+        
+        result = {
+            "cluster": int(cluster),
+            "cluster_name": cluster_name,
+            "message": description,
+            "cluster_size": len(cluster_profiles),
+            "top_games": top_games[:3] if top_games else ["FPS", "Sports", "Racing"],
+            "top_music": top_music[:3] if top_music else ["Pop", "Rock", "Hip-Hop"],
+            "avg_listening_hours": round(float(avg_hours), 2),
+            "confidence": "High"
+        }
+        
+        return {"success": True, "data": result}
+        
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -340,8 +400,8 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    # Check API status
-    api_status = check_api_health()
+    # Check if models are loaded
+    models_loaded = check_api_health()
     
     # Sidebar
     with st.sidebar:
@@ -354,12 +414,12 @@ def main():
             "Fill in your preferences and click **Predict My Cluster** to see which group you belong to!"
         )
         
-        st.header("🔌 API Status")
-        if api_status:
-            st.success("✅ Backend Connected")
+        st.header("🤖 Model Status")
+        if models_loaded:
+            st.success("✅ Models Loaded")
         else:
-            st.error("❌ Backend Disconnected")
-            st.warning("Please start the backend server:\n```bash\ncd Clusterflow/backend\npython app.py\n```")
+            st.error("❌ Models Not Loaded")
+            st.warning("Please ensure model files are in the correct directory.")
         
         st.header("📊 Cluster Information")
         st.markdown("""
@@ -377,9 +437,8 @@ def main():
         """)
     
     # Main content
-    if not api_status:
-        st.error("⚠️ Backend API is not running. Please start the backend server first.")
-        st.code("cd Clusterflow/backend\npython app.py", language="bash")
+    if not models_loaded:
+        st.error("⚠️ ML models are not loaded. Please check the model files.")
         return
     
     # Get available genres
