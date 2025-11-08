@@ -3,8 +3,8 @@ services:
     name: clusterflow-api
     env: python
     region: oregon
-    buildCommand: pip install -r Clusterflow/backend/requirements.txt
-    startCommand: cd Clusterflow/backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: cd Clusterflow/backend && pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: cd Clusterflow/backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
