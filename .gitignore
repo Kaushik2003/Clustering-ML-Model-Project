@@ -83,10 +83,10 @@ venv.bak/
 # *.json
 # *.parquet
 
-# Model files
+# Model files (keeping joblib files for deployment)
 *.pkl
 *.pickle
-*.joblib
+# *.joblib  # Commented out to allow model files in repo
 *.h5
 *.hdf5
 

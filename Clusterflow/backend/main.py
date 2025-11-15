@@ -27,16 +27,41 @@ app.add_middleware(
 )
 
 # Load models
-MODEL_DIR = "../model"
-try:
-    model = joblib.load(os.path.join(MODEL_DIR, "kprototypes_model.joblib"))
-    scaler = joblib.load(os.path.join(MODEL_DIR, "standard_scaler.joblib"))
-    encoder = joblib.load(os.path.join(MODEL_DIR, "ordinal_encoder.joblib"))
-    model_info = joblib.load(os.path.join(MODEL_DIR, "model_info.joblib"))
-    print("✅ Models loaded successfully!")
-except Exception as e:
-    print(f"❌ Error loading models: {e}")
+# Try multiple paths for model directory
+possible_model_paths = [
+    "../model",  # Local development
+    "model",  # If models are in same directory
+    os.path.join(os.path.dirname(__file__), "../model"),  # Relative to this file
+    "/opt/render/project/src/Clusterflow/model",  # Render absolute path
+    "Clusterflow/model",  # From repo root
+]
+
+MODEL_DIR = None
+for path in possible_model_paths:
+    abs_path = os.path.abspath(path)
+    print(f"Trying path: {abs_path} - Exists: {os.path.exists(path)}")
+    if os.path.exists(path):
+        MODEL_DIR = path
+        print(f"✅ Found model directory: {abs_path}")
+        break
+
+if MODEL_DIR is None:
+    print("❌ Model directory not found!")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Directory contents: {os.listdir('.')}")
     model = None
+else:
+    try:
+        model = joblib.load(os.path.join(MODEL_DIR, "kprototypes_model.joblib"))
+        scaler = joblib.load(os.path.join(MODEL_DIR, "standard_scaler.joblib"))
+        encoder = joblib.load(os.path.join(MODEL_DIR, "ordinal_encoder.joblib"))
+        model_info = joblib.load(os.path.join(MODEL_DIR, "model_info.joblib"))
+        print(f"✅ Models loaded successfully from {MODEL_DIR}!")
+    except Exception as e:
+        print(f"❌ Error loading models: {e}")
+        import traceback
+        traceback.print_exc()
+        model = None
 
 # Request model
 class PredictionRequest(BaseModel):
